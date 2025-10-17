@@ -1,275 +1,100 @@
-"""List of Continental bounty targets and their optional requirements."""
+"""Blood Token bounty list utilities and editable storage."""
 
-from typing import Dict, Optional
+from __future__ import annotations
 
-# Each entry maps an RSI handle to a special requirement string.
-# A value of ``None`` means there is no special requirement for that target.
-BOUNTY_TARGETS: Dict[str, Optional[str]] = {
-    # A -----------------------
-    "1stSpear": None,
-    "A-Plus": None,
-    "Achilles_Deus": None,
-    "AcidKharn": None,
-    "acidrom": None,
-    "Agens_Leti": None,
-    "Agent_Eldritch": None,
-    "ako111": None,
-    "Albert-III": None,
-    "Alfipilot": "Must say \"chaff that\" in chat",
-    "AllegedlyAdam": None,
-    "Alpha-Papa-5": "Must say \"there can be only one!\" in chat",
-    "AlphaZeux": None,
-    "Amiro77": None,
-    "Amogus": None,
-    "ARC_VR": None,
-    "Argarth": None,
-    "Armor-Piercing": None,
-    "ArJak": None,
-    "Asabi": None,
-    "Attillan": None,
-    "AutoMecha": None,
-    "AvengerOne": None,
-    "Azure-Lance": None,
-    # B -----------------------
-    "beast3PO": None,
-    "BeefOffering": None,
-    "BeWater": None,
-    "B1GGpapa": "Must say \"there can be only one!\" in chat",
-    "b6jordan1": None,
-    "BeardPapa427": "Must say \"there can be only one!\" in chat",
-    "Beeberrie": None,
-    "Billy-Pilgrim": None,
-    "Blackw00d": None,
-    "BOBA_F3TT": None,
-    "Bogdoggle": None,
-    "bognogus": None,
-    "BoredGamerUK": None,
-    "Boywife": None,
-    "BuzzCutPsycho": None,
-    # C -----------------------
-    "CaptainF-Harlock": None,
-    "CaptainBerks": None,
-    "CaptainKillgore": None,
-    "CaptainRichard": None,
-    "CaptDirty": None,
-    "Cego": None,
-    "Chapkin": None,
-    "CharlieFox2": None,
-    "chodie": None,
-    "CitizenKate": None,
-    "CMDR-Malek": None,
-    "Cold_Kill": None,
-    "Coldsealion": None,
-    "crabos": None,
-    "croberts68": "Must say \"Answer the call 2016\" in chat after killing",
-    # D -----------------------
-    "Dace_1": None,
-    "D_e_l_t_a": None,
-    "DEFANG0": None,
-    "Defanos": None,
-    "Dhovrak": None,
-    "DocHound": None,
-    "Druitt": "Must say \"Clip it\" in chat after killing",
-    "duncankobe": None,
-    "DurganKael": None,
-    "DZaster": None,
-    # E -----------------------
-    "E-A-G-L-E": None,
-    "Edmodius": None,
-    "Elderelic": None,
-    "EndsInvention": "Must say \"Clip it\" in chat after killing",
-    "ErektPigeon": None,
-    "Ez1": None,
-    # F -----------------------
-    "Father_Sweepus": None,
-    "fearlesschickens": None,
-    "FISTernaut": None,
-    "Flame78": None,
-    "FleshFear": None,
-    "Flight_Assist": None,
-    "Fortune_one": None,
-    "fourpigs": None,
-    "Fraggna": None,
-    "Fraggler": None,
-    "Franky-AGB": None,
-    "FreshAsIce": None,
-    "funkzie": None,
-    # G -----------------------
-    "gaddz": None,
-    "Galathir": None,
-    "Galidrum": "Must gank during an official event",
-    "Gh0ule": None,
-    "GI-Jew": None,
-    "Gimic": None,
-    "Godrick_The_Grafted": None,
-    "GoldOnion": None,
-    "Goloith": None,
-    "GrumpyEye": None,
-    # H -----------------------
-    "Hanthos_Taal": None,
-    "Harry-Potter": None,
-    "hcvertigo": "Must say \"Splash rammer\" in chat after killing",
-    "Heavy_Bob": "Must say \"Et tu Bob?\" in chat",
-    "heimdelight": None,
-    "HelljumperMac": None,
-    "Hendell": None,
-    "hybaa": None,
-    # I -----------------------
-    "IAM_B4NSHEE": None,
-    "Iker_Z": None,
-    "inigma_X": None,
-    "iRoadRage": None,
-    # J -----------------------
-    "J3PT": None,
-    "JackNavarre": None,
-    "jean_girard": None,
-    "JerryL": None,
-    "Jettt": None,
-    "JoaoRaiden": None,
-    "JohnathanWinters": None,
-    "JohnWickelo": None,
-    "Joykiller": None,
-    # K -----------------------
-    "KaT_Astrus_Mega": None,
-    "KatieByrne": None,
-    "keuzy": None,
-    "KnightOfJ": "Must say \"Clip it\" in chat after killing",
-    "Kozuka": None,
-    "Krazysig": None,
-    # L -----------------------
-    "LanceReactor": None,
-    "LarkyMauler": None,
-    "LBH-PanOperator": "Must say \"Papa_Sweep says hello\" in chat",
-    "LGBTAlien": None,
-    "Lily_Valkyrie": None,
-    "LONEWOLF_BANDIT": None,
-    "Lord_Admiral_Chad": None,
-    "Luke_Rehab": None,
-    "Lykosar": None,
-    # M -----------------------
-    "m0w": None,
-    "MasterCheetos": None,
-    "Mertur": None,
-    "Metatron000": None,
-    "MimiFuwafuwa": None,
-    "missgabiz": None,
-    "Moist_Noodle": None,
-    "Montoya": None,
-    "morphologis": "Extra coin bonus if you kill him with a bomb",
-    "MrZong": None,
-    # N -----------------------
-    "NathanGrimm": None,
-    "nazmordian": None,
-    "NickyVissicky": None,
-    "Nightfoe": None,
-    "North_Borne": None,
-    "NullaLegatum": None,
-    # O -----------------------
-    "OGDA": None,
-    "Osprey_BC": "Must kill in KRF",
-    # P -----------------------
-    "Papa_Freedom": None,
-    "Papa_Lightfry": "Must say \"there can be only one!\" in chat",
-    "Papa_Scronch": "Must say \"there can be only one!\" in chat",
-    "Papa_Van": "Must say \"there can be only one!\" in chat",
-    "Papa-Jim": "Must say \"there can be only one!\" in chat",
-    "Papa-Niles": "Must say \"there can be only one!\" in chat",
-    "PapaJolly": "Must say \"there can be only one!\" in chat",
-    "PapaParadox": "Must say \"there can be only one!\" in chat",
-    "Papapalpatine": "Must say \"there can be only one!\" in chat",
-    "papa-rev": "Must say \"there can be only one!\" in chat",
-    "papasmurf3416": "Must say \"there can be only one!\" in chat",
-    "Papawoody": "Must say \"there can be only one!\" in chat",
-    "PawPawJones": "Must say \"there can be only one!\" in chat",
-    "PartySquid": None,
-    "perrenormal": None,
-    "Pervy_Onii-chan": None,
-    "Phenomenom": None,
-    "pitbullslayer": None,
-    "PixelShogun": None,
-    "PossibleGiant": "Must say \"Papa_Sweep says hello\" in chat after kill",
-    # Q -----------------------
-    "QSR-Dragon": None,
-    # R -----------------------
-    "R_I_N_Z_L_E_R": None,
-    "RATGOD": None,
-    "RedLir": None,
-    "ReeceDev": None,
-    "RegulatorRep": None,
-    "rilez": None,
-    "RinnyDinDin": None,
-    "Rudelord": None,
-    "Rvdy": None,
-    # S -----------------------
-    "S7ORMY": None,
-    "SaintNyx": None,
-    "Saint-Nyx": None,
-    "SaltEMike": None,
-    "sapper307": None,
-    "Schwang": None,
-    "Scikle": None,
-    "SE-V-EN": None,
-    "sessi0ns": None,
-    "SERAPHIME21": None,
-    "Sfer": None,
-    "Shankerz": None,
-    "shortr0": "Must say \"The_Nerd_Sweeper says hello\" in chat",
-    "Silvershades": None,
-    "sladuog": None,
-    "SmiIey": None,
-    "Snalibe": None,
-    "SneedMaster": None,
-    "Sony_usr": None,
-    "Soulsworn": None,
-    "sovapid": None,
-    "SpaceCutlet": None,
-    "SpaceGhost_85": None,
-    "SpaceKhajiit": None,
-    "SpecSniperz": None,
-    "SplashFeedTV": "Must say \"Clip it\" in chat after kill",
-    "Steel-Legacy": None,
-    "Stesig": None,
-    "StTosin": None,
-    "SWAR": None,
-    "syLLyTime": None,
-    "SynxSyv": None,
-    # T -----------------------
-    "taichi7": None,
-    "Tatsumo": None,
-    "The_Technician01": None,
-    "TheFloorMatt": None,
-    "Titan": None,
-    "TofuTakeout": None,
-    "ToughMudda": None,
-    "TRF-Luke_RehabTV": None,
-    "TwoToneRebel": None,
-    "tvLiQuid": None,
-    # U -----------------------
-    "ultraspacedad": None,
-    "Unknown_User-ID": None,
-    # V -----------------------
-    "V-R-S": None,
-    "VAHRIS": None,
-    "Vecshan": None,
-    "ven_man": None,
-    "ver9jl": None,
-    "Viktor_Karoff": None,
-    "vorteX-x": None,
-    # W -----------------------
-    "Wakish": None,
-    "Warbucc": None,
-    "Winter-CIG": None,
-    "WITCH3R": None,
-    "wrl-trockle": None,
-    # X -----------------------
-    "XArgosX": None,
-    "XeroState": None,
-    "XUFIER": None,
-    # Y -----------------------
-    "YarBoi": None,
-    "Yie": None,
-    # Z -----------------------
-    "zaves": None,
-    "ZZBadooch": None,
-    "ZZGooch": None,
+from typing import Callable, Dict, Optional
+
+BLOOD_TOKEN_TEMPLATE = (
+    "Bounty List Example Format:\n"
+    "Thunderlake | Must kill with knife\n"
+    "PlayerName2 | Must say \"there can be only one!\" in chat\n"
+    "PlayerName3 | Kill using railgun"
+)
+
+_LISTENERS: list[Callable[[Dict[str, Optional[str]]], None]] = []
+
+# Keep a mutable mapping so observers can hold a reference that updates in place.
+_BLOOD_TOKEN_TARGETS: Dict[str, Optional[str]] = {
+    "Thunderlake": "Must kill with knife",
 }
+
+
+def get_bounty_targets() -> Dict[str, Optional[str]]:
+    """Return a shallow copy of the active Blood Token bounty list."""
+
+    return dict(_BLOOD_TOKEN_TARGETS)
+
+
+def register_listener(callback: Callable[[Dict[str, Optional[str]]], None]) -> None:
+    """Register a callback that should run whenever the bounty list changes."""
+
+    if callback in _LISTENERS:
+        return
+    _LISTENERS.append(callback)
+
+
+def unregister_listener(callback: Callable[[Dict[str, Optional[str]]], None]) -> None:
+    """Remove a previously registered listener, if present."""
+
+    try:
+        _LISTENERS.remove(callback)
+    except ValueError:
+        pass
+
+
+def set_bounty_targets(new_targets: Dict[str, Optional[str]]) -> None:
+    """Replace the active Blood Token list and notify listeners."""
+
+    _BLOOD_TOKEN_TARGETS.clear()
+    _BLOOD_TOKEN_TARGETS.update(new_targets)
+
+    snapshot = get_bounty_targets()
+    for callback in list(_LISTENERS):
+        try:
+            callback(snapshot)
+        except Exception:
+            continue
+
+
+def parse_bounty_list(raw_text: str) -> Dict[str, Optional[str]]:
+    """Parse user-provided bounty text into a mapping."""
+
+    parsed: Dict[str, Optional[str]] = {}
+
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if "|" in stripped:
+            name_part, requirement_part = stripped.split("|", 1)
+            handle = name_part.strip()
+            requirement = requirement_part.strip() or None
+        else:
+            handle = stripped
+            requirement = None
+
+        if not handle:
+            continue
+
+        parsed[handle] = requirement
+
+    if not parsed:
+        raise ValueError("No valid Blood Token bounty entries were provided.")
+
+    return parsed
+
+
+def format_bounty_targets(targets: Optional[Dict[str, Optional[str]]] = None) -> str:
+    """Format the provided targets (or current list) for display/editing."""
+
+    source = targets if targets is not None else _BLOOD_TOKEN_TARGETS
+    lines = []
+    for handle, requirement in source.items():
+        if requirement:
+            lines.append(f"{handle} | {requirement}")
+        else:
+            lines.append(handle)
+
+    return "\n".join(lines)
+

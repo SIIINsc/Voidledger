@@ -1,11 +1,15 @@
-"""Utilities for detecting Continental bounty interactions in the Star Citizen log."""
+"""Utilities for detecting Blood Token bounty interactions in the Star Citizen log."""
 from __future__ import annotations
 
 import re
 from collections import deque
 from typing import Deque, Dict, Iterable, Optional, Tuple
 
-from modules.bounty_list import BOUNTY_TARGETS
+from modules.bounty_list import (
+    get_bounty_targets,
+    register_listener,
+    unregister_listener,
+)
 
 
 class BountyTracker:
@@ -32,10 +36,9 @@ class BountyTracker:
         self._gui = gui
         self._sounds = sounds
         self._logger = None
-        self._bounties: Dict[str, Tuple[str, str]] = {
-            handle.lower(): (handle, requirement or "")
-            for handle, requirement in BOUNTY_TARGETS.items()
-        }
+        self._bounties: Dict[str, Tuple[str, Optional[str]]] = {}
+        register_listener(self._handle_bounty_update)
+        self._handle_bounty_update(get_bounty_targets())
         # Track recently reported events so we do not spam duplicate notifications
         self._recent_events: Deque[Tuple[str, str, str]] = deque(maxlen=128)
         self._recent_keys = set()
@@ -64,13 +67,14 @@ class BountyTracker:
         if normalized not in self._bounties:
             return
         canonical, requirement = self._bounties[normalized]
-        message = f"Continental bounty kill on {canonical} by {killer}."
+        message = f"Blood Token bounty kill on {canonical} by {killer}."
         if requirement:
             message += f" Requirement: {requirement}"
         self._notify(
             event_type="kill",
-            target_key=normalized,
             message=message,
+            canonical=canonical,
+            requirement=requirement,
             actor=killer,
             raw_line=raw_line or victim,
         )
@@ -95,21 +99,27 @@ class BountyTracker:
             if normalized not in self._bounties:
                 continue
             canonical, requirement_text = self._bounties[normalized]
-            message = f"Continental bounty {event_type} on {canonical} detected."
+            message = f"Blood Token bounty {event_type} on {canonical} detected."
             if requirement_text:
                 message += f" Requirement: {requirement_text}"
-            self._notify(event_type, normalized, message, raw_line=line)
+            self._notify(
+                event_type=event_type,
+                message=message,
+                canonical=canonical,
+                requirement=requirement_text,
+                raw_line=line,
+            )
             break
 
     def _notify(
         self,
         event_type: str,
-        target_key: str,
         message: str,
+        canonical: str,
+        requirement: Optional[str],
         actor: Optional[str] = None,
         raw_line: str = "",
     ) -> None:
-        canonical, requirement = self._bounties[target_key]
         key = (event_type, canonical, raw_line.strip())
         if not self._remember_event(key):
             return
@@ -130,6 +140,7 @@ class BountyTracker:
                 target=canonical,
                 requirement=requirement,
                 actor=actor,
+                source="tracker",
             )
 
     def _remember_event(self, key: Tuple[str, str, str]) -> bool:
@@ -148,4 +159,19 @@ class BountyTracker:
         if "[" in cleaned:
             cleaned = cleaned.split("[", 1)[0]
         return cleaned.lower()
+
+    def _handle_bounty_update(
+        self, targets: Dict[str, Optional[str]]
+    ) -> None:
+        """Refresh the cached lookup table when the source list changes."""
+
+        self._bounties = {
+            handle.lower(): (handle, requirement)
+            for handle, requirement in targets.items()
+        }
+        self._recent_events.clear()
+        self._recent_keys.clear()
+
+    def __del__(self) -> None:
+        unregister_listener(self._handle_bounty_update)
 

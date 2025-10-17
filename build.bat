@@ -24,7 +24,7 @@ echo Packages installed.
 echo.
 
 echo [3/3] Building the executable...
-set "exe_name=VoidLedger"
+set "exe_name=Special BVKT - SIIIN Edition"
 
 pyinstaller --noconfirm --onefile --windowed --name "%exe_name%" --icon="voidledger.ico" --add-data "static;static" --add-data "sounds;sounds" --add-data "mappings.js;." main.py
 

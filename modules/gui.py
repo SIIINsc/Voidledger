@@ -13,7 +13,13 @@ import webbrowser
 import global_settings
 import modules.helpers as Helpers
 from modules import mappings_parser
-from modules.bounty_list import BOUNTY_TARGETS
+from modules.bounty_list import (
+    BLOOD_TOKEN_TEMPLATE,
+    format_bounty_targets,
+    get_bounty_targets,
+    parse_bounty_list,
+    set_bounty_targets,
+)
 
 class AppLogger():
     def __init__(self, text_widget): self.text_widget = text_widget
@@ -53,11 +59,12 @@ class GUI():
         self.victim_handle_entry=None
         self.victim_ship_combo=None
         self.injection_env_var=None
-        self.injection_delivery_var=None
         self.ship_map = {}
         self.weapon_map = {}
         self.reverse_ship_map = {}
         self.reverse_weapon_map = {}
+        self.ship_options = []
+        self.weapon_options = []
         self.kill_history_widget = None
         self.kill_history_entries = []
         self.star_citizen_log_widget = None
@@ -65,16 +72,22 @@ class GUI():
         self._updating_volume_slider = False
         self._pending_volume_percent = None
         self._pending_icon_warnings = []
+        self.system_test_window = None
+        self.system_test_button = None
+        self.bounty_editor_window = None
+        self.bounty_editor_text = None
+        self.commander_mode_button = None
         self.colors = {'bg_dark':'#1e1e1e','bg_mid':'#252526','bg_light':'#333333','text':'#cccccc',
                        'text_dark':'#888888','accent':'#007acc','button':'#007acc',
-                       'submit_button':'#4CAF50','error':'#f44747','gold':'#d4af37'}
+                       'submit_button':'#4CAF50','error':'#f44747','blood_token_primary':'#ff4d6d',
+                       'blood_token_button':'#991b1b'}
         self.blightveil_theme = {
             'title': '#A855F7',
             'accent': '#8B5CF6',
             'hover': '#C084FC'
         }
 
-    def display_bounty_event(self, event_type, target, requirement, actor=None):
+    def display_bounty_event(self, event_type, target, requirement, actor=None, source="tracker"):
         """Surface requirement details and record bounty activity in the UI."""
         requirement_display = requirement if requirement else "No requirement."
 
@@ -88,12 +101,14 @@ class GUI():
         message_lines.append(f"Requirement: {requirement_display}")
         if event_type != "kill":
             messagebox.showinfo(
-                title="Continental Bounty Update",
+                title="Blood Token Bounty Update",
                 message="\n".join(message_lines)
             )
 
         if event_type == "kill":
             self._append_kill_history(actor, target, requirement)
+            if source != "system_test":
+                self._send_blood_token_payload(target, requirement, actor)
 
     def _append_kill_history(self, actor, target, requirement):
         """Record a bounty kill in the on-screen session history."""
@@ -130,6 +145,125 @@ class GUI():
         else:
             self.kill_history_widget.insert(tk.END, "\n")
 
+    def _send_blood_token_payload(self, target, requirement, actor):
+        """Send Blood Token bounty results to Servitor when available."""
+
+        if not self.api or not hasattr(self.api, "post_blood_token_bounty"):
+            if self.log:
+                self.log.debug("Blood Token payload not sent: API client missing handler.")
+            return
+
+        try:
+            self.api.post_blood_token_bounty(
+                target=target,
+                requirement=requirement,
+                actor=actor,
+            )
+        except Exception as exc:
+            if self.log:
+                self.log.error(f"Failed to send Blood Token bounty payload: {exc}")
+
+    def open_bounty_editor(self):
+        """Open the editable Blood Token bounty list dialog."""
+
+        if self.bounty_editor_window and self.bounty_editor_window.winfo_exists():
+            self.bounty_editor_window.deiconify()
+            self.bounty_editor_window.lift()
+            self.bounty_editor_window.focus_set()
+            return
+
+        self.bounty_editor_window = tk.Toplevel(self.app)
+        self.bounty_editor_window.title("Update Blood Token Bounty List")
+        self.bounty_editor_window.configure(bg=self.colors['bg_dark'])
+        self.bounty_editor_window.resizable(False, False)
+
+        instructions = tk.Label(
+            self.bounty_editor_window,
+            text=BLOOD_TOKEN_TEMPLATE,
+            justify=tk.LEFT,
+            anchor="w",
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text'],
+            font=("Segoe UI", 9),
+            wraplength=360,
+            padx=10,
+            pady=10,
+        )
+        instructions.pack(fill=tk.X)
+
+        self.bounty_editor_text = scrolledtext.ScrolledText(
+            self.bounty_editor_window,
+            wrap=tk.WORD,
+            width=48,
+            height=10,
+            bg=self.colors['bg_mid'],
+            fg=self.colors['text'],
+            font=("Consolas", 10),
+            relief=tk.FLAT,
+            insertbackground=self.colors['text'],
+        )
+        self.bounty_editor_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.bounty_editor_text.insert("1.0", format_bounty_targets(get_bounty_targets()))
+
+        button_row = tk.Frame(self.bounty_editor_window, bg=self.colors['bg_dark'])
+        button_row.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        tk.Button(
+            button_row,
+            text="Cancel",
+            command=self._close_bounty_editor,
+            bg=self.colors['bg_light'],
+            fg=self.colors['text'],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9),
+            padx=10,
+            pady=4,
+        ).pack(side=tk.RIGHT, padx=(5, 0))
+
+        tk.Button(
+            button_row,
+            text="Save",
+            command=self._apply_bounty_list_update,
+            bg=self.colors['blood_token_button'],
+            fg="#FFFFFF",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            activebackground=self.colors['blood_token_primary'],
+            activeforeground="#FFFFFF",
+            padx=12,
+            pady=4,
+        ).pack(side=tk.RIGHT)
+
+        self.bounty_editor_window.protocol("WM_DELETE_WINDOW", self._close_bounty_editor)
+
+    def _close_bounty_editor(self):
+        if self.bounty_editor_window and self.bounty_editor_window.winfo_exists():
+            self.bounty_editor_window.destroy()
+        self.bounty_editor_window = None
+        self.bounty_editor_text = None
+
+    def _apply_bounty_list_update(self):
+        if not self.bounty_editor_text:
+            return
+
+        raw_text = self.bounty_editor_text.get("1.0", tk.END)
+        try:
+            parsed_targets = parse_bounty_list(raw_text)
+        except ValueError as exc:
+            messagebox.showerror("Blood Token Bounty", str(exc))
+            return
+
+        set_bounty_targets(parsed_targets)
+
+        if self.log:
+            self.log.success(f"Blood Token bounty list updated with {len(parsed_targets)} target(s).")
+
+        messagebox.showinfo(
+            title="Blood Token Bounty",
+            message="Blood Token bounty list updated successfully.",
+        )
+        self._close_bounty_editor()
+
     def _locate_emoji_candidate(self, filename: str) -> Optional[Path]:
         candidate = Path(filename)
         if candidate.is_file():
@@ -162,16 +296,17 @@ class GUI():
         final_image.tk.call(final_image, 'copy', scaled, '-from', 0, 0, width, height, '-to', offset_x, offset_y)
         return final_image
 
-    def _load_single_emoji(self, filename: str, fallback_factory, box_size: int) -> tk.PhotoImage:
+    def _load_single_emoji(self, filename: Optional[str], fallback_factory, box_size: int) -> tk.PhotoImage:
         candidate_paths = []
 
-        static_candidate = Path(Helpers.resource_path(os.path.join("static", "images", filename)))
-        if static_candidate.is_file():
-            candidate_paths.append(static_candidate)
+        if filename:
+            static_candidate = Path(Helpers.resource_path(os.path.join("static", "images", filename)))
+            if static_candidate.is_file():
+                candidate_paths.append(static_candidate)
 
-        located = self._locate_emoji_candidate(filename)
-        if located and located not in candidate_paths:
-            candidate_paths.append(located)
+            located = self._locate_emoji_candidate(filename)
+            if located and located not in candidate_paths:
+                candidate_paths.append(located)
 
         for candidate in candidate_paths:
             try:
@@ -180,14 +315,15 @@ class GUI():
             except tk.TclError:
                 continue
 
-        self._pending_icon_warnings.append(f"Main Log, missing emoji, {filename}")
+        if filename:
+            self._pending_icon_warnings.append(f"Main Log, missing emoji, {filename}")
         return fallback_factory()
 
     def _load_emoji_assets(self) -> None:
         self._pending_icon_warnings.clear()
-        self.continental_history_badge_image = self._load_single_emoji(
-            "continental_logo.png",
-            self._create_continental_badge_image,
+        self.blood_token_badge_image = self._load_single_emoji(
+            None,
+            self._create_blood_token_badge_image,
             24,
         )
         self.star_citizen_logo_image = self._load_single_emoji(
@@ -208,17 +344,20 @@ class GUI():
             self.log.warning(warning)
         self._pending_icon_warnings.clear()
 
-    def _create_continental_badge_image(self):
-        """Create a small Continental crest badge using Tk's native drawing."""
+    def _create_blood_token_badge_image(self):
+        """Create a small crimson Blood Token badge using Tk's native drawing."""
         size = 24
         badge = tk.PhotoImage(width=size, height=size)
         center = (size - 1) / 2
         outer_radius = (size - 2) / 2
-        inner_radius = outer_radius * 0.68
-        cross_radius = inner_radius * 0.45
-        gold = "#d4a017"
-        highlight = "#f6dd74"
-        inner = "#1b1b1b"
+        inner_radius = outer_radius * 0.7
+        core_radius = inner_radius * 0.55
+
+        outer_color = "#7f1d1d"
+        rim_highlight = "#dc2626"
+        inner_glow = "#f87171"
+        core = "#1f0a0a"
+        sheen = "#fda4af"
 
         for y in range(size):
             for x in range(size):
@@ -229,31 +368,17 @@ class GUI():
                     continue
 
                 dist = dist_sq ** 0.5
-                color = gold
-                if dist < inner_radius:
-                    color = inner
+                color = outer_color
 
-                    # horizontal ring accent
-                    if abs(dy) <= 1.0:
-                        color = gold
-
-                    # vertical spine
-                    if abs(dx) <= 1.0:
-                        color = gold
-
-                    # descending diagonal arms
-                    if dy >= 0 and abs(dx * 0.85 - (dy - inner_radius * 0.2)) <= 1.2 and dist >= cross_radius:
-                        color = gold
-                    if dy >= 0 and abs(dx * 0.85 + (dy - inner_radius * 0.2)) <= 1.2 and dist >= cross_radius:
-                        color = gold
-
-                    # upper cross beam
-                    if abs(dy + inner_radius * 0.55) <= 1.0 and dist >= cross_radius:
-                        color = gold
-
-                # top arc highlight for a subtle sheen
-                if dist >= inner_radius and dy < 0:
-                    color = highlight
+                if dist >= inner_radius * 0.95:
+                    if dy < 0:
+                        color = rim_highlight
+                elif dist >= core_radius:
+                    color = inner_glow
+                    if dy < 0:
+                        color = sheen
+                else:
+                    color = core
 
                 badge.put(color, (x, y))
 
@@ -632,28 +757,151 @@ class GUI():
             return
         self.reverse_ship_map = {v: k for k, v in self.ship_map.items()}
         self.reverse_weapon_map = {v: k for k, v in self.weapon_map.items()}
-        ship_game_names = sorted(self.reverse_ship_map.keys())
-        weapon_game_names = sorted(self.reverse_weapon_map.keys())
-        self.killer_ship_combo['values'] = ship_game_names
-        self.victim_ship_combo['values'] = ship_game_names
-        self.killer_weapon_combo['values'] = weapon_game_names
+        self.ship_options = sorted(self.reverse_ship_map.keys())
+        self.weapon_options = sorted(self.reverse_weapon_map.keys())
+        self._populate_system_test_dropdowns()
         self.log.success("Mappings loaded successfully. Star citizen Must be open to continue...")
+
+    def _populate_system_test_dropdowns(self):
+        if self.killer_ship_combo:
+            self.killer_ship_combo['values'] = self.ship_options
+        if self.victim_ship_combo:
+            self.victim_ship_combo['values'] = self.ship_options
+        if self.killer_weapon_combo:
+            self.killer_weapon_combo['values'] = self.weapon_options
+
+    def _close_system_test_window(self):
+        if self.system_test_window and self.system_test_window.winfo_exists():
+            self.system_test_window.destroy()
+        self.system_test_window = None
+        for attr in (
+            "killer_handle_entry",
+            "killer_ship_combo",
+            "killer_weapon_combo",
+            "victim_handle_entry",
+            "victim_ship_combo",
+        ):
+            setattr(self, attr, None)
+        self.injection_env_var = None
+        if self.system_test_button and self.system_test_button.winfo_exists():
+            self.system_test_button.config(state=tk.NORMAL)
+
+    def open_system_test_window(self):
+        if self.system_test_window and self.system_test_window.winfo_exists():
+            self.system_test_window.lift()
+            self.system_test_window.focus_force()
+            return
+
+        self.system_test_window = tk.Toplevel(self.app)
+        self.system_test_window.title("System Test")
+        self.system_test_window.configure(bg=self.colors['bg_dark'])
+        self.system_test_window.resizable(False, False)
+        self.system_test_window.transient(self.app)
+        self.system_test_window.protocol("WM_DELETE_WINDOW", self._close_system_test_window)
+
+        if self.system_test_button and self.system_test_button.winfo_exists():
+            self.system_test_button.config(state=tk.DISABLED)
+
+        container = tk.Frame(self.system_test_window, bg=self.colors['bg_dark'], padx=12, pady=12)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        header = tk.Label(
+            container,
+            text="System Test",
+            font=("Segoe UI", 11, "bold"),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['accent'],
+        )
+        header.pack(anchor="w", pady=(0, 8))
+
+        form_frame = tk.Frame(container, bg=self.colors['bg_dark'])
+        form_frame.pack(fill=tk.BOTH, expand=True)
+
+        entry_style = {
+            'bg': self.colors['bg_light'],
+            'fg': self.colors['text'],
+            'relief': tk.FLAT,
+            'font': ("Segoe UI", 9),
+            'insertbackground': self.colors['text'],
+        }
+        label_style = {'bg': self.colors['bg_dark'], 'fg': self.colors['text_dark'], 'font': ("Segoe UI", 8)}
+
+        tk.Label(form_frame, text="Killer Handle", **label_style).grid(row=0, column=0, sticky='w')
+        self.killer_handle_entry = tk.Entry(form_frame, **entry_style)
+        self.killer_handle_entry.grid(row=1, column=0, sticky='ew', padx=(0, 5))
+
+        tk.Label(form_frame, text="Killer Ship", **label_style).grid(row=0, column=1, sticky='w')
+        self.killer_ship_combo = ttk.Combobox(form_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
+        self.killer_ship_combo.grid(row=1, column=1, sticky='ew', padx=(0, 5))
+
+        tk.Label(form_frame, text="Killer Weapon", **label_style).grid(row=0, column=2, sticky='w')
+        self.killer_weapon_combo = ttk.Combobox(form_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
+        self.killer_weapon_combo.grid(row=1, column=2, sticky='ew')
+
+        tk.Label(form_frame, text="Victim Handle", **label_style).grid(row=2, column=0, sticky='w', pady=(6, 0))
+        self.victim_handle_entry = tk.Entry(form_frame, **entry_style)
+        self.victim_handle_entry.grid(row=3, column=0, sticky='ew', padx=(0, 5))
+
+        tk.Label(form_frame, text="Victim Ship", **label_style).grid(row=2, column=1, sticky='w', pady=(6, 0))
+        self.victim_ship_combo = ttk.Combobox(form_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
+        self.victim_ship_combo.grid(row=3, column=1, sticky='ew', padx=(0, 5))
+
+        env_frame = tk.Frame(form_frame, bg=self.colors['bg_dark'])
+        env_frame.grid(row=3, column=2, sticky='ew')
+        env_frame.grid_columnconfigure((0, 1), weight=1)
+
+        self.injection_env_var = tk.StringVar(value="PU")
+        radio_style = {
+            "bg": self.colors['bg_dark'],
+            "fg": self.colors['text_dark'],
+            "selectcolor": self.colors['bg_light'],
+            "activebackground": self.colors['bg_dark'],
+            "font": ("Segoe UI", 8),
+            "highlightthickness": 0,
+        }
+        tk.Label(env_frame, text="Environment", **label_style).grid(row=0, column=0, columnspan=2, sticky='w')
+        tk.Radiobutton(env_frame, text="PU", variable=self.injection_env_var, value="PU", **radio_style).grid(row=1, column=0, sticky='w')
+        tk.Radiobutton(env_frame, text="AC", variable=self.injection_env_var, value="AC", **radio_style).grid(row=1, column=1, sticky='e')
+
+        form_frame.grid_columnconfigure((0, 1, 2), weight=1)
+
+        submit_button = tk.Button(
+            container,
+            text="Run System Test",
+            command=self.handle_kill_injection,
+            bg=self.colors['submit_button'],
+            fg='#FFFFFF',
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+        )
+        submit_button.pack(fill=tk.X, pady=(12, 0))
+
+        self._populate_system_test_dropdowns()
+        self.system_test_window.lift()
+        self.system_test_window.focus_force()
 
     def handle_kill_injection(self):
         try:
+            if not all(
+                [
+                    self.killer_handle_entry,
+                    self.killer_ship_combo,
+                    self.killer_weapon_combo,
+                    self.victim_handle_entry,
+                    self.victim_ship_combo,
+                    self.injection_env_var,
+                ]
+            ):
+                if self.log:
+                    self.log.error("System Test controls are unavailable. Re-open the System Test window to continue.")
+                return
+
             killer_h = self.killer_handle_entry.get()
             killer_s_game_name = self.killer_ship_combo.get()
             killer_w_game_name = self.killer_weapon_combo.get()
             victim_h = self.victim_handle_entry.get()
             victim_s_game_name = self.victim_ship_combo.get()
-            game_mode_from_ui = self.injection_env_var.get()
-            delivery_mode = self.injection_delivery_var.get() if self.injection_delivery_var else "online"
-            post_online = delivery_mode == "online"
-
-            if post_online and not (self.api and self.api.api_key.get("value")):
-                if self.log:
-                    self.log.error("Cannot inject kill online: API key not valid.")
-                return
+            game_mode_from_ui = self.injection_env_var.get() if self.injection_env_var else "PU"
 
             if game_mode_from_ui == "PU":
                 game_mode_for_server = "SC_Default"
@@ -661,64 +909,56 @@ class GUI():
                 game_mode_for_server = "EA_FreeFlight"
 
             if not all([killer_h, killer_s_game_name, killer_w_game_name, victim_h, victim_s_game_name]):
-                if self.log: self.log.error("All inject fields are required."); return
-
-            killer_s_raw = self.reverse_ship_map.get(killer_s_game_name)
-            killer_w_raw = self.reverse_weapon_map.get(killer_w_game_name)
-            victim_s_raw = self.reverse_ship_map.get(victim_s_game_name)
-
-            normalized_mode = (game_mode_for_server or "").upper()
-            is_gameplay_mode = normalized_mode in {"SC_DEFAULT", "EA_FREEFLIGHT"}
-
-            payload = {"result":"kill", "data": {
-                        "player": killer_h, "victim": victim_h, "time": datetime.now().isoformat(),
-                        "zone": victim_s_raw, "weapon": killer_w_raw,
-                        "rsi_profile": f"https://robertsspaceindustries.com/citizens/{killer_h}",
-                        "game_mode": game_mode_for_server, "client_ver": self.local_version,
-                        "killers_ship": killer_s_raw,
-                        "anonymize_state": self.anonymize_state.get("enabled", False)
-                      }}
+                if self.log:
+                    self.log.error("All System Test fields are required.")
+                return
 
             if self.log:
-                self.log.info(f"Injecting kill: {killer_h} -> {victim_h}")
+                self.log.info(f"Running System Test: {killer_h} -> {victim_h}")
+                self.log.info("⚠️ System Test is offline only — kills will not be sent to Servitor.")
 
             normalized_self = ""
             if self.api and getattr(self.api, "rsi_handle", None):
                 normalized_self = (self.api.rsi_handle.get("current") or "").strip().lower()
-            is_self_victim = bool(normalized_self and victim_h.strip().lower() == normalized_self)
 
-            if post_online:
-                Thread(target=self.api.post_kill_event, args=(payload, "reportKill"), daemon=True).start()
+            killer_h_normalized = killer_h.strip().lower()
+            victim_h_normalized = victim_h.strip().lower()
+            is_self_killer = bool(normalized_self and killer_h_normalized == normalized_self)
+            is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
+            is_self_involved = is_self_killer or is_self_victim
+
+            if is_self_involved:
+                timestamp_display = datetime.now().strftime("%H:%M:%S")
+                weapon_display = killer_w_game_name or "Unknown weapon"
+
+                if is_self_victim:
+                    death_message = f"{killer_h} killed you using {weapon_display}"
+                    self.log_mode_kill(
+                        game_mode_for_server,
+                        timestamp_display,
+                        death_message,
+                        "death",
+                    )
+                    if self.sounds:
+                        self.sounds.play_death_sound()
+                else:
+                    self.log_mode_kill(
+                        game_mode_for_server,
+                        timestamp_display,
+                        f"You killed {victim_h} with {weapon_display}",
+                        "kill",
+                    )
+                    if self.sounds:
+                        self.sounds.play_kill_sound()
             else:
                 if self.log:
-                    self.log.info("Test mode selected: Kill event prepared locally without contacting Servitor.")
-
-            timestamp_display = datetime.now().strftime("%H:%M:%S")
-            if is_self_victim:
-                weapon_display = killer_w_game_name or "Unknown weapon"
-                death_message = f"{killer_h} killed you using {weapon_display}"
-                self.log_mode_kill(
-                    game_mode_for_server,
-                    timestamp_display,
-                    death_message,
-                    "death",
-                )
-                if self.sounds:
-                    self.sounds.play_death_sound()
-            else:
-                weapon_display = killer_w_game_name or "Unknown weapon"
-                self.log_mode_kill(
-                    game_mode_for_server,
-                    timestamp_display,
-                    f"You killed {victim_h} with {weapon_display}",
-                    "kill",
-                )
-                if self.sounds:
-                    self.sounds.play_kill_sound()
+                    self.log.info(
+                        "Kill log entry skipped: your handle was not involved in this injected event."
+                    )
 
             if game_mode_for_server == "SC_Default":
                 cleaned_victim_input = victim_h.strip().lower()
-                for target_name, requirement in BOUNTY_TARGETS.items():
+                for target_name, requirement in get_bounty_targets().items():
                     if cleaned_victim_input == target_name.lower():
                         if self.log:
                             self.log.success(
@@ -730,10 +970,11 @@ class GUI():
                             event_type="kill",
                             target=target_name,
                             requirement=requirement,
-                            actor=killer_h
+                            actor=killer_h,
+                            source="system_test",
                         )
                         break
-            
+
             self.killer_handle_entry.delete(0, tk.END)
             self.victim_handle_entry.delete(0, tk.END)
 
@@ -762,7 +1003,7 @@ class GUI():
         history_frame = tk.LabelFrame(
             main_frame,
             bg=self.colors['bg_dark'],
-            fg=self.colors['gold'],
+            fg=self.colors['blood_token_primary'],
             font=("Segoe UI", 9, "bold"),
             relief=tk.GROOVE,
             labelanchor='nw',
@@ -773,15 +1014,41 @@ class GUI():
 
         history_label = tk.Label(
             history_frame,
-            text="Continental Bounty",
+            text="Blood Token Bounty",
             font=("Segoe UI", 9, "bold"),
             bg=self.colors['bg_dark'],
-            fg=self.colors['gold'],
-            image=self.continental_history_badge_image,
+            fg=self.colors['blood_token_primary'],
+            image=self.blood_token_badge_image,
             compound=tk.LEFT,
             padx=4
         )
         history_frame.configure(labelwidget=history_label)
+        history_controls = tk.Frame(history_frame, bg=self.colors['bg_dark'])
+        history_controls.pack(fill=tk.X, pady=(0, 6))
+
+        self.update_bounty_button = tk.Button(
+            history_controls,
+            text="Update Bounty List",
+            command=self.open_bounty_editor,
+            bg=self.colors['blood_token_button'],
+            fg="#FFFFFF",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            activebackground=self.colors['blood_token_primary'],
+            activeforeground="#FFFFFF",
+            padx=8,
+            pady=2,
+        )
+        self.update_bounty_button.pack(side=tk.LEFT)
+
+        tk.Label(
+            history_controls,
+            text="⚠️ Make sure you update your list!",
+            font=("Segoe UI", 8),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text_dark'],
+            padx=8,
+        ).pack(side=tk.LEFT)
         self.kill_history_widget = scrolledtext.ScrolledText(
             history_frame,
             wrap=tk.WORD,
@@ -799,7 +1066,7 @@ class GUI():
         self.kill_history_widget.tag_configure("separator", foreground=self.colors['text_dark'])
         self.kill_history_widget.tag_configure("kill_text", foreground=self.colors['submit_button'])
         self.kill_history_widget.tag_configure("bold_name", font=kill_history_bold)
-        self.kill_history_widget.tag_configure("victim_name", foreground=self.colors['gold'], font=kill_history_bold)
+        self.kill_history_widget.tag_configure("victim_name", foreground=self.colors['blood_token_primary'], font=kill_history_bold)
         self.kill_history_widget.tag_configure("requirement_alert", foreground=self.colors['error'])
 
         star_citizen_frame = tk.LabelFrame(
@@ -820,8 +1087,6 @@ class GUI():
             font=("Segoe UI", 9, "bold"),
             bg=self.colors['bg_dark'],
             fg="#FFFFFF",
-            image=self.star_citizen_logo_image,
-            compound=tk.LEFT,
             padx=4
         )
         star_citizen_frame.configure(labelwidget=star_citizen_label)
@@ -851,8 +1116,6 @@ class GUI():
             font=("Segoe UI", 9, "bold"),
             bg=self.colors['bg_dark'],
             fg="#A855F7",
-            image=self.blightveil_badge_image,
-            compound=tk.LEFT,
             padx=4
         )
         features_frame.configure(labelwidget=features_label)
@@ -872,12 +1135,6 @@ class GUI():
         generate_key_link.bind("<Button-1>", self.open_discord_link)
         self.api_status_label = tk.Label(status_frame, text="Key Status: Invalid", fg=self.colors['error'], font=("Segoe UI", 9, "italic"), bg=self.colors['bg_dark'])
         self.api_status_label.pack(side=tk.RIGHT)
-
-        inject_frame = tk.Frame(features_frame, bg=self.colors['bg_dark'])
-        inject_frame.pack(fill=tk.X, pady=(5, 10))
-
-        entry_style = {'bg': self.colors['bg_light'], 'fg': self.colors['text'], 'relief': tk.FLAT, 'font': ("Segoe UI", 9)}
-        label_style = {'bg': self.colors['bg_dark'], 'fg': self.colors['text_dark'], 'font': ("Segoe UI", 8)}
 
         style = ttk.Style(self.app)
         style.theme_use('clam')
@@ -901,50 +1158,17 @@ class GUI():
             lightcolor=[('focus', self.blightveil_theme['hover']), ('!focus', self.colors['bg_dark'])]
         )
 
-        tk.Label(inject_frame, text="Killer Handle", **label_style).grid(row=0, column=0, sticky='w')
-        self.killer_handle_entry = tk.Entry(inject_frame, **entry_style)
-        self.killer_handle_entry.grid(row=1, column=0, sticky='ew', padx=(0,5))
-
-        tk.Label(inject_frame, text="Killer Ship", **label_style).grid(row=0, column=1, sticky='w')
-        self.killer_ship_combo = ttk.Combobox(inject_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
-        self.killer_ship_combo.grid(row=1, column=1, sticky='ew', padx=(0,5))
-
-        tk.Label(inject_frame, text="Killer Weapon", **label_style).grid(row=0, column=2, sticky='w')
-        self.killer_weapon_combo = ttk.Combobox(inject_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
-        self.killer_weapon_combo.grid(row=1, column=2, sticky='ew')
-
-        tk.Label(inject_frame, text="Victim Handle", **label_style).grid(row=2, column=0, sticky='w', pady=(5,0))
-        self.victim_handle_entry = tk.Entry(inject_frame, **entry_style)
-        self.victim_handle_entry.grid(row=3, column=0, sticky='ew', padx=(0,5))
-
-        tk.Label(inject_frame, text="Victim Ship", **label_style).grid(row=2, column=1, sticky='w', pady=(5,0))
-        self.victim_ship_combo = ttk.Combobox(inject_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
-        self.victim_ship_combo.grid(row=3, column=1, sticky='ew', padx=(0,5))
-        
-        self.injection_env_var = tk.StringVar(value="PU")
-        self.injection_delivery_var = tk.StringVar(value="online")
-        radio_style = {"bg":self.colors['bg_dark'],"fg":self.colors['text_dark'],"selectcolor":self.colors['bg_light'],"activebackground":self.colors['bg_dark'],"font":("Segoe UI",8),"highlightthickness":0}
-
-        env_mode_frame = tk.Frame(inject_frame, bg=self.colors['bg_dark'])
-        env_mode_frame.grid(row=3, column=2, sticky='ew')
-        env_mode_frame.grid_columnconfigure((0, 1), weight=1)
-
-        env_frame = tk.Frame(env_mode_frame, bg=self.colors['bg_dark'])
-        env_frame.grid(row=0, column=0, sticky='w', padx=(0, 5))
-        tk.Radiobutton(env_frame, text="PU", variable=self.injection_env_var, value="PU", **radio_style).pack(side=tk.LEFT, expand=True)
-        tk.Radiobutton(env_frame, text="AC", variable=self.injection_env_var, value="AC", **radio_style).pack(side=tk.LEFT, expand=True)
-
-        delivery_frame = tk.Frame(env_mode_frame, bg=self.colors['bg_dark'])
-        delivery_frame.grid(row=0, column=1, sticky='e')
-        tk.Radiobutton(delivery_frame, text="Send it", variable=self.injection_delivery_var, value="online", **radio_style).pack(side=tk.LEFT, expand=True)
-        tk.Radiobutton(delivery_frame, text="Test", variable=self.injection_delivery_var, value="offline", **radio_style).pack(side=tk.LEFT, expand=True)
-        tk.Button(inject_frame, text="Submit Kill", command=self.handle_kill_injection, bg=self.colors['submit_button'], fg='#FFFFFF', relief=tk.FLAT, font=("Segoe UI", 9, "bold")).grid(row=2, column=2, sticky='ew', pady=(5,0))
-        inject_frame.grid_columnconfigure((0,1,2), weight=1)
-
         bottom_frame = tk.Frame(features_frame, bg=self.colors['bg_dark'])
         bottom_frame.pack(fill=tk.X)
         button_style = {'relief': tk.FLAT, 'font': ("Segoe UI", 9, "bold"), 'fg': '#FFFFFF'}
-        tk.Button(bottom_frame, text="Commander Mode", command=lambda: self.cm.setup_commander_mode() if self.cm else None, bg=self.colors['button'], **button_style).pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=(0, 5))
+        self.commander_mode_button = tk.Button(
+            bottom_frame,
+            text="Commander Mode",
+            command=lambda: self.cm.setup_commander_mode() if self.cm else None,
+            bg=self.colors['button'],
+            **button_style,
+        )
+        self.commander_mode_button.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=(0, 5))
         self.anonymize_button = tk.Button(bottom_frame, text="Anonymity Off", command=self.toggle_anonymize, **button_style, bg=self.colors['bg_light'], width=12); self.anonymize_button.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=(5, 0))
 
         footer_frame = tk.Frame(main_frame, bg=self.colors['bg_dark'])
@@ -953,6 +1177,16 @@ class GUI():
 
         controls_frame = tk.Frame(footer_frame, bg=self.colors['bg_dark'])
         controls_frame.pack(side=tk.RIGHT)
+        self.system_test_button = tk.Button(
+            controls_frame,
+            text="System Test",
+            command=self.open_system_test_window,
+            **button_style,
+            bg=self.colors['button'],
+            width=12,
+        )
+        self.system_test_button.pack(side=tk.LEFT, padx=(0, 8), pady=(5, 0))
+
         self.debug_button = tk.Button(controls_frame, text="Debug Off", command=self.toggle_debug, **button_style, bg=self.colors['bg_light'], width=12)
         self.debug_button.pack(side=tk.LEFT, padx=(0, 8), pady=(5, 0))
 
