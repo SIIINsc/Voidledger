@@ -74,8 +74,6 @@ class GUI():
         self._pending_icon_warnings = []
         self.system_test_window = None
         self.system_test_button = None
-        self.bounty_editor_window = None
-        self.bounty_editor_text = None
         self.commander_mode_button = None
         self.colors = {'bg_dark':'#1e1e1e','bg_mid':'#252526','bg_light':'#333333','text':'#cccccc',
                        'text_dark':'#888888','accent':'#007acc','button':'#007acc',
@@ -921,16 +919,14 @@ class GUI():
             if self.api and getattr(self.api, "rsi_handle", None):
                 normalized_self = (self.api.rsi_handle.get("current") or "").strip().lower()
 
-            if (not normalized_self or normalized_self == "n/a") and self.cfg_handler:
-                rsi_source = getattr(self.cfg_handler, "rsi_handle", None)
-                if isinstance(rsi_source, dict):
-                    normalized_self = (rsi_source.get("current") or "").strip().lower()
+            killer_h_normalized = killer_h.strip().lower()
+            victim_h_normalized = victim_h.strip().lower()
+            is_self_killer = bool(normalized_self and killer_h_normalized == normalized_self)
+            is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
+            is_self_involved = is_self_killer or is_self_victim
 
             killer_h_normalized = killer_h.strip().lower()
             victim_h_normalized = victim_h.strip().lower()
-            if normalized_self in ("", "n/a"):
-                normalized_self = ""
-
             is_self_killer = bool(normalized_self and killer_h_normalized == normalized_self)
             is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
             is_self_involved = is_self_killer or is_self_victim

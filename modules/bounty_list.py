@@ -60,7 +60,6 @@ def parse_bounty_list(raw_text: str) -> Dict[str, Optional[str]]:
     """Parse user-provided bounty text into a mapping."""
 
     parsed: Dict[str, Optional[str]] = {}
-    seen_handles: set[str] = set()
 
     for line in raw_text.splitlines():
         stripped = line.strip()
@@ -78,12 +77,7 @@ def parse_bounty_list(raw_text: str) -> Dict[str, Optional[str]]:
         if not handle:
             continue
 
-        normalized = handle.lower()
-        if normalized in seen_handles:
-            continue
-
         parsed[handle] = requirement
-        seen_handles.add(normalized)
 
     if not parsed:
         raise ValueError("No valid Blood Token bounty entries were provided.")
