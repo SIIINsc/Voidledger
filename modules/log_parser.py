@@ -4,7 +4,7 @@ from time import sleep
 from os import stat
 from threading import Thread
 
-# Continental bounty helpers
+# Blood Token bounty helpers
 from modules.bounty_tracker import BountyTracker
 
 class LogParser():
@@ -155,7 +155,7 @@ class LogParser():
         return datetime.now().strftime("%H:%M:%S")
 
     def read_log_line(self, line: str, upload_kills: bool) -> None:
-        # Always scan for Continental bounty interactions first when in the PU.
+        # Always scan for Blood Token bounty interactions first when in the PU.
         if self.game_mode == "SC_Default":
             self.bounty_tracker.inspect_line(line)
 
