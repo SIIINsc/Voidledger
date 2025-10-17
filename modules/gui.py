@@ -53,11 +53,12 @@ class GUI():
         self.victim_handle_entry=None
         self.victim_ship_combo=None
         self.injection_env_var=None
-        self.injection_delivery_var=None
         self.ship_map = {}
         self.weapon_map = {}
         self.reverse_ship_map = {}
         self.reverse_weapon_map = {}
+        self.ship_options = []
+        self.weapon_options = []
         self.kill_history_widget = None
         self.kill_history_entries = []
         self.star_citizen_log_widget = None
@@ -65,6 +66,9 @@ class GUI():
         self._updating_volume_slider = False
         self._pending_volume_percent = None
         self._pending_icon_warnings = []
+        self.system_test_window = None
+        self.system_test_button = None
+        self.commander_mode_button = None
         self.colors = {'bg_dark':'#1e1e1e','bg_mid':'#252526','bg_light':'#333333','text':'#cccccc',
                        'text_dark':'#888888','accent':'#007acc','button':'#007acc',
                        'submit_button':'#4CAF50','error':'#f44747','gold':'#d4af37'}
@@ -632,28 +636,151 @@ class GUI():
             return
         self.reverse_ship_map = {v: k for k, v in self.ship_map.items()}
         self.reverse_weapon_map = {v: k for k, v in self.weapon_map.items()}
-        ship_game_names = sorted(self.reverse_ship_map.keys())
-        weapon_game_names = sorted(self.reverse_weapon_map.keys())
-        self.killer_ship_combo['values'] = ship_game_names
-        self.victim_ship_combo['values'] = ship_game_names
-        self.killer_weapon_combo['values'] = weapon_game_names
+        self.ship_options = sorted(self.reverse_ship_map.keys())
+        self.weapon_options = sorted(self.reverse_weapon_map.keys())
+        self._populate_system_test_dropdowns()
         self.log.success("Mappings loaded successfully. Star citizen Must be open to continue...")
+
+    def _populate_system_test_dropdowns(self):
+        if self.killer_ship_combo:
+            self.killer_ship_combo['values'] = self.ship_options
+        if self.victim_ship_combo:
+            self.victim_ship_combo['values'] = self.ship_options
+        if self.killer_weapon_combo:
+            self.killer_weapon_combo['values'] = self.weapon_options
+
+    def _close_system_test_window(self):
+        if self.system_test_window and self.system_test_window.winfo_exists():
+            self.system_test_window.destroy()
+        self.system_test_window = None
+        for attr in (
+            "killer_handle_entry",
+            "killer_ship_combo",
+            "killer_weapon_combo",
+            "victim_handle_entry",
+            "victim_ship_combo",
+        ):
+            setattr(self, attr, None)
+        self.injection_env_var = None
+        if self.system_test_button and self.system_test_button.winfo_exists():
+            self.system_test_button.config(state=tk.NORMAL)
+
+    def open_system_test_window(self):
+        if self.system_test_window and self.system_test_window.winfo_exists():
+            self.system_test_window.lift()
+            self.system_test_window.focus_force()
+            return
+
+        self.system_test_window = tk.Toplevel(self.app)
+        self.system_test_window.title("System Test")
+        self.system_test_window.configure(bg=self.colors['bg_dark'])
+        self.system_test_window.resizable(False, False)
+        self.system_test_window.transient(self.app)
+        self.system_test_window.protocol("WM_DELETE_WINDOW", self._close_system_test_window)
+
+        if self.system_test_button and self.system_test_button.winfo_exists():
+            self.system_test_button.config(state=tk.DISABLED)
+
+        container = tk.Frame(self.system_test_window, bg=self.colors['bg_dark'], padx=12, pady=12)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        header = tk.Label(
+            container,
+            text="System Test",
+            font=("Segoe UI", 11, "bold"),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['accent'],
+        )
+        header.pack(anchor="w", pady=(0, 8))
+
+        form_frame = tk.Frame(container, bg=self.colors['bg_dark'])
+        form_frame.pack(fill=tk.BOTH, expand=True)
+
+        entry_style = {
+            'bg': self.colors['bg_light'],
+            'fg': self.colors['text'],
+            'relief': tk.FLAT,
+            'font': ("Segoe UI", 9),
+            'insertbackground': self.colors['text'],
+        }
+        label_style = {'bg': self.colors['bg_dark'], 'fg': self.colors['text_dark'], 'font': ("Segoe UI", 8)}
+
+        tk.Label(form_frame, text="Killer Handle", **label_style).grid(row=0, column=0, sticky='w')
+        self.killer_handle_entry = tk.Entry(form_frame, **entry_style)
+        self.killer_handle_entry.grid(row=1, column=0, sticky='ew', padx=(0, 5))
+
+        tk.Label(form_frame, text="Killer Ship", **label_style).grid(row=0, column=1, sticky='w')
+        self.killer_ship_combo = ttk.Combobox(form_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
+        self.killer_ship_combo.grid(row=1, column=1, sticky='ew', padx=(0, 5))
+
+        tk.Label(form_frame, text="Killer Weapon", **label_style).grid(row=0, column=2, sticky='w')
+        self.killer_weapon_combo = ttk.Combobox(form_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
+        self.killer_weapon_combo.grid(row=1, column=2, sticky='ew')
+
+        tk.Label(form_frame, text="Victim Handle", **label_style).grid(row=2, column=0, sticky='w', pady=(6, 0))
+        self.victim_handle_entry = tk.Entry(form_frame, **entry_style)
+        self.victim_handle_entry.grid(row=3, column=0, sticky='ew', padx=(0, 5))
+
+        tk.Label(form_frame, text="Victim Ship", **label_style).grid(row=2, column=1, sticky='w', pady=(6, 0))
+        self.victim_ship_combo = ttk.Combobox(form_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
+        self.victim_ship_combo.grid(row=3, column=1, sticky='ew', padx=(0, 5))
+
+        env_frame = tk.Frame(form_frame, bg=self.colors['bg_dark'])
+        env_frame.grid(row=3, column=2, sticky='ew')
+        env_frame.grid_columnconfigure((0, 1), weight=1)
+
+        self.injection_env_var = tk.StringVar(value="PU")
+        radio_style = {
+            "bg": self.colors['bg_dark'],
+            "fg": self.colors['text_dark'],
+            "selectcolor": self.colors['bg_light'],
+            "activebackground": self.colors['bg_dark'],
+            "font": ("Segoe UI", 8),
+            "highlightthickness": 0,
+        }
+        tk.Label(env_frame, text="Environment", **label_style).grid(row=0, column=0, columnspan=2, sticky='w')
+        tk.Radiobutton(env_frame, text="PU", variable=self.injection_env_var, value="PU", **radio_style).grid(row=1, column=0, sticky='w')
+        tk.Radiobutton(env_frame, text="AC", variable=self.injection_env_var, value="AC", **radio_style).grid(row=1, column=1, sticky='e')
+
+        form_frame.grid_columnconfigure((0, 1, 2), weight=1)
+
+        submit_button = tk.Button(
+            container,
+            text="Run System Test",
+            command=self.handle_kill_injection,
+            bg=self.colors['submit_button'],
+            fg='#FFFFFF',
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+        )
+        submit_button.pack(fill=tk.X, pady=(12, 0))
+
+        self._populate_system_test_dropdowns()
+        self.system_test_window.lift()
+        self.system_test_window.focus_force()
 
     def handle_kill_injection(self):
         try:
+            if not all(
+                [
+                    self.killer_handle_entry,
+                    self.killer_ship_combo,
+                    self.killer_weapon_combo,
+                    self.victim_handle_entry,
+                    self.victim_ship_combo,
+                    self.injection_env_var,
+                ]
+            ):
+                if self.log:
+                    self.log.error("System Test controls are unavailable. Re-open the System Test window to continue.")
+                return
+
             killer_h = self.killer_handle_entry.get()
             killer_s_game_name = self.killer_ship_combo.get()
             killer_w_game_name = self.killer_weapon_combo.get()
             victim_h = self.victim_handle_entry.get()
             victim_s_game_name = self.victim_ship_combo.get()
-            game_mode_from_ui = self.injection_env_var.get()
-            delivery_mode = self.injection_delivery_var.get() if self.injection_delivery_var else "online"
-            post_online = delivery_mode == "online"
-
-            if post_online and not (self.api and self.api.api_key.get("value")):
-                if self.log:
-                    self.log.error("Cannot inject kill online: API key not valid.")
-                return
+            game_mode_from_ui = self.injection_env_var.get() if self.injection_env_var else "PU"
 
             if game_mode_from_ui == "PU":
                 game_mode_for_server = "SC_Default"
@@ -661,26 +788,13 @@ class GUI():
                 game_mode_for_server = "EA_FreeFlight"
 
             if not all([killer_h, killer_s_game_name, killer_w_game_name, victim_h, victim_s_game_name]):
-                if self.log: self.log.error("All inject fields are required."); return
-
-            killer_s_raw = self.reverse_ship_map.get(killer_s_game_name)
-            killer_w_raw = self.reverse_weapon_map.get(killer_w_game_name)
-            victim_s_raw = self.reverse_ship_map.get(victim_s_game_name)
-
-            normalized_mode = (game_mode_for_server or "").upper()
-            is_gameplay_mode = normalized_mode in {"SC_DEFAULT", "EA_FREEFLIGHT"}
-
-            payload = {"result":"kill", "data": {
-                        "player": killer_h, "victim": victim_h, "time": datetime.now().isoformat(),
-                        "zone": victim_s_raw, "weapon": killer_w_raw,
-                        "rsi_profile": f"https://robertsspaceindustries.com/citizens/{killer_h}",
-                        "game_mode": game_mode_for_server, "client_ver": self.local_version,
-                        "killers_ship": killer_s_raw,
-                        "anonymize_state": self.anonymize_state.get("enabled", False)
-                      }}
+                if self.log:
+                    self.log.error("All System Test fields are required.")
+                return
 
             if self.log:
-                self.log.info(f"Injecting kill: {killer_h} -> {victim_h}")
+                self.log.info(f"Running System Test: {killer_h} -> {victim_h}")
+                self.log.info("⚠️ System Test is offline only — kills will not be sent to Servitor.")
 
             normalized_self = ""
             if self.api and getattr(self.api, "rsi_handle", None):
@@ -692,11 +806,11 @@ class GUI():
             is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
             is_self_involved = is_self_killer or is_self_victim
 
-            if post_online:
-                Thread(target=self.api.post_kill_event, args=(payload, "reportKill"), daemon=True).start()
-            else:
-                if self.log:
-                    self.log.info("Test mode selected: Kill event prepared locally without contacting Servitor.")
+            killer_h_normalized = killer_h.strip().lower()
+            victim_h_normalized = victim_h.strip().lower()
+            is_self_killer = bool(normalized_self and killer_h_normalized == normalized_self)
+            is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
+            is_self_involved = is_self_killer or is_self_victim
 
             if is_self_involved:
                 timestamp_display = datetime.now().strftime("%H:%M:%S")
@@ -744,7 +858,7 @@ class GUI():
                             actor=killer_h
                         )
                         break
-            
+
             self.killer_handle_entry.delete(0, tk.END)
             self.victim_handle_entry.delete(0, tk.END)
 
@@ -880,12 +994,6 @@ class GUI():
         self.api_status_label = tk.Label(status_frame, text="Key Status: Invalid", fg=self.colors['error'], font=("Segoe UI", 9, "italic"), bg=self.colors['bg_dark'])
         self.api_status_label.pack(side=tk.RIGHT)
 
-        inject_frame = tk.Frame(features_frame, bg=self.colors['bg_dark'])
-        inject_frame.pack(fill=tk.X, pady=(5, 10))
-
-        entry_style = {'bg': self.colors['bg_light'], 'fg': self.colors['text'], 'relief': tk.FLAT, 'font': ("Segoe UI", 9)}
-        label_style = {'bg': self.colors['bg_dark'], 'fg': self.colors['text_dark'], 'font': ("Segoe UI", 8)}
-
         style = ttk.Style(self.app)
         style.theme_use('clam')
         style.configure(
@@ -908,50 +1016,17 @@ class GUI():
             lightcolor=[('focus', self.blightveil_theme['hover']), ('!focus', self.colors['bg_dark'])]
         )
 
-        tk.Label(inject_frame, text="Killer Handle", **label_style).grid(row=0, column=0, sticky='w')
-        self.killer_handle_entry = tk.Entry(inject_frame, **entry_style)
-        self.killer_handle_entry.grid(row=1, column=0, sticky='ew', padx=(0,5))
-
-        tk.Label(inject_frame, text="Killer Ship", **label_style).grid(row=0, column=1, sticky='w')
-        self.killer_ship_combo = ttk.Combobox(inject_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
-        self.killer_ship_combo.grid(row=1, column=1, sticky='ew', padx=(0,5))
-
-        tk.Label(inject_frame, text="Killer Weapon", **label_style).grid(row=0, column=2, sticky='w')
-        self.killer_weapon_combo = ttk.Combobox(inject_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
-        self.killer_weapon_combo.grid(row=1, column=2, sticky='ew')
-
-        tk.Label(inject_frame, text="Victim Handle", **label_style).grid(row=2, column=0, sticky='w', pady=(5,0))
-        self.victim_handle_entry = tk.Entry(inject_frame, **entry_style)
-        self.victim_handle_entry.grid(row=3, column=0, sticky='ew', padx=(0,5))
-
-        tk.Label(inject_frame, text="Victim Ship", **label_style).grid(row=2, column=1, sticky='w', pady=(5,0))
-        self.victim_ship_combo = ttk.Combobox(inject_frame, state='readonly', font=("Segoe UI", 9), style='Blightveil.TCombobox')
-        self.victim_ship_combo.grid(row=3, column=1, sticky='ew', padx=(0,5))
-        
-        self.injection_env_var = tk.StringVar(value="PU")
-        self.injection_delivery_var = tk.StringVar(value="online")
-        radio_style = {"bg":self.colors['bg_dark'],"fg":self.colors['text_dark'],"selectcolor":self.colors['bg_light'],"activebackground":self.colors['bg_dark'],"font":("Segoe UI",8),"highlightthickness":0}
-
-        env_mode_frame = tk.Frame(inject_frame, bg=self.colors['bg_dark'])
-        env_mode_frame.grid(row=3, column=2, sticky='ew')
-        env_mode_frame.grid_columnconfigure((0, 1), weight=1)
-
-        env_frame = tk.Frame(env_mode_frame, bg=self.colors['bg_dark'])
-        env_frame.grid(row=0, column=0, sticky='w', padx=(0, 5))
-        tk.Radiobutton(env_frame, text="PU", variable=self.injection_env_var, value="PU", **radio_style).pack(side=tk.LEFT, expand=True)
-        tk.Radiobutton(env_frame, text="AC", variable=self.injection_env_var, value="AC", **radio_style).pack(side=tk.LEFT, expand=True)
-
-        delivery_frame = tk.Frame(env_mode_frame, bg=self.colors['bg_dark'])
-        delivery_frame.grid(row=0, column=1, sticky='e')
-        tk.Radiobutton(delivery_frame, text="Send it", variable=self.injection_delivery_var, value="online", **radio_style).pack(side=tk.LEFT, expand=True)
-        tk.Radiobutton(delivery_frame, text="Test", variable=self.injection_delivery_var, value="offline", **radio_style).pack(side=tk.LEFT, expand=True)
-        tk.Button(inject_frame, text="Submit Kill", command=self.handle_kill_injection, bg=self.colors['submit_button'], fg='#FFFFFF', relief=tk.FLAT, font=("Segoe UI", 9, "bold")).grid(row=2, column=2, sticky='ew', pady=(5,0))
-        inject_frame.grid_columnconfigure((0,1,2), weight=1)
-
         bottom_frame = tk.Frame(features_frame, bg=self.colors['bg_dark'])
         bottom_frame.pack(fill=tk.X)
         button_style = {'relief': tk.FLAT, 'font': ("Segoe UI", 9, "bold"), 'fg': '#FFFFFF'}
-        tk.Button(bottom_frame, text="Commander Mode", command=lambda: self.cm.setup_commander_mode() if self.cm else None, bg=self.colors['button'], **button_style).pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=(0, 5))
+        self.commander_mode_button = tk.Button(
+            bottom_frame,
+            text="Commander Mode",
+            command=lambda: self.cm.setup_commander_mode() if self.cm else None,
+            bg=self.colors['button'],
+            **button_style,
+        )
+        self.commander_mode_button.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=(0, 5))
         self.anonymize_button = tk.Button(bottom_frame, text="Anonymity Off", command=self.toggle_anonymize, **button_style, bg=self.colors['bg_light'], width=12); self.anonymize_button.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=(5, 0))
 
         footer_frame = tk.Frame(main_frame, bg=self.colors['bg_dark'])
@@ -960,6 +1035,16 @@ class GUI():
 
         controls_frame = tk.Frame(footer_frame, bg=self.colors['bg_dark'])
         controls_frame.pack(side=tk.RIGHT)
+        self.system_test_button = tk.Button(
+            controls_frame,
+            text="System Test",
+            command=self.open_system_test_window,
+            **button_style,
+            bg=self.colors['button'],
+            width=12,
+        )
+        self.system_test_button.pack(side=tk.LEFT, padx=(0, 8), pady=(5, 0))
+
         self.debug_button = tk.Button(controls_frame, text="Debug Off", command=self.toggle_debug, **button_style, bg=self.colors['bg_light'], width=12)
         self.debug_button.pack(side=tk.LEFT, padx=(0, 8), pady=(5, 0))
 
