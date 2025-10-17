@@ -13,7 +13,13 @@ import webbrowser
 import global_settings
 import modules.helpers as Helpers
 from modules import mappings_parser
-from modules.bounty_list import BOUNTY_TARGETS
+from modules.bounty_list import (
+    BLOOD_TOKEN_TEMPLATE,
+    format_bounty_targets,
+    get_bounty_targets,
+    parse_bounty_list,
+    set_bounty_targets,
+)
 
 class AppLogger():
     def __init__(self, text_widget): self.text_widget = text_widget
@@ -71,14 +77,15 @@ class GUI():
         self.commander_mode_button = None
         self.colors = {'bg_dark':'#1e1e1e','bg_mid':'#252526','bg_light':'#333333','text':'#cccccc',
                        'text_dark':'#888888','accent':'#007acc','button':'#007acc',
-                       'submit_button':'#4CAF50','error':'#f44747','gold':'#d4af37'}
+                       'submit_button':'#4CAF50','error':'#f44747','blood_token_primary':'#ff4d6d',
+                       'blood_token_button':'#991b1b'}
         self.blightveil_theme = {
             'title': '#A855F7',
             'accent': '#8B5CF6',
             'hover': '#C084FC'
         }
 
-    def display_bounty_event(self, event_type, target, requirement, actor=None):
+    def display_bounty_event(self, event_type, target, requirement, actor=None, source="tracker"):
         """Surface requirement details and record bounty activity in the UI."""
         requirement_display = requirement if requirement else "No requirement."
 
@@ -92,12 +99,14 @@ class GUI():
         message_lines.append(f"Requirement: {requirement_display}")
         if event_type != "kill":
             messagebox.showinfo(
-                title="Continental Bounty Update",
+                title="Blood Token Bounty Update",
                 message="\n".join(message_lines)
             )
 
         if event_type == "kill":
             self._append_kill_history(actor, target, requirement)
+            if source != "system_test":
+                self._send_blood_token_payload(target, requirement, actor)
 
     def _append_kill_history(self, actor, target, requirement):
         """Record a bounty kill in the on-screen session history."""
@@ -134,6 +143,125 @@ class GUI():
         else:
             self.kill_history_widget.insert(tk.END, "\n")
 
+    def _send_blood_token_payload(self, target, requirement, actor):
+        """Send Blood Token bounty results to Servitor when available."""
+
+        if not self.api or not hasattr(self.api, "post_blood_token_bounty"):
+            if self.log:
+                self.log.debug("Blood Token payload not sent: API client missing handler.")
+            return
+
+        try:
+            self.api.post_blood_token_bounty(
+                target=target,
+                requirement=requirement,
+                actor=actor,
+            )
+        except Exception as exc:
+            if self.log:
+                self.log.error(f"Failed to send Blood Token bounty payload: {exc}")
+
+    def open_bounty_editor(self):
+        """Open the editable Blood Token bounty list dialog."""
+
+        if self.bounty_editor_window and self.bounty_editor_window.winfo_exists():
+            self.bounty_editor_window.deiconify()
+            self.bounty_editor_window.lift()
+            self.bounty_editor_window.focus_set()
+            return
+
+        self.bounty_editor_window = tk.Toplevel(self.app)
+        self.bounty_editor_window.title("Update Blood Token Bounty List")
+        self.bounty_editor_window.configure(bg=self.colors['bg_dark'])
+        self.bounty_editor_window.resizable(False, False)
+
+        instructions = tk.Label(
+            self.bounty_editor_window,
+            text=BLOOD_TOKEN_TEMPLATE,
+            justify=tk.LEFT,
+            anchor="w",
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text'],
+            font=("Segoe UI", 9),
+            wraplength=360,
+            padx=10,
+            pady=10,
+        )
+        instructions.pack(fill=tk.X)
+
+        self.bounty_editor_text = scrolledtext.ScrolledText(
+            self.bounty_editor_window,
+            wrap=tk.WORD,
+            width=48,
+            height=10,
+            bg=self.colors['bg_mid'],
+            fg=self.colors['text'],
+            font=("Consolas", 10),
+            relief=tk.FLAT,
+            insertbackground=self.colors['text'],
+        )
+        self.bounty_editor_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.bounty_editor_text.insert("1.0", format_bounty_targets(get_bounty_targets()))
+
+        button_row = tk.Frame(self.bounty_editor_window, bg=self.colors['bg_dark'])
+        button_row.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        tk.Button(
+            button_row,
+            text="Cancel",
+            command=self._close_bounty_editor,
+            bg=self.colors['bg_light'],
+            fg=self.colors['text'],
+            relief=tk.FLAT,
+            font=("Segoe UI", 9),
+            padx=10,
+            pady=4,
+        ).pack(side=tk.RIGHT, padx=(5, 0))
+
+        tk.Button(
+            button_row,
+            text="Save",
+            command=self._apply_bounty_list_update,
+            bg=self.colors['blood_token_button'],
+            fg="#FFFFFF",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            activebackground=self.colors['blood_token_primary'],
+            activeforeground="#FFFFFF",
+            padx=12,
+            pady=4,
+        ).pack(side=tk.RIGHT)
+
+        self.bounty_editor_window.protocol("WM_DELETE_WINDOW", self._close_bounty_editor)
+
+    def _close_bounty_editor(self):
+        if self.bounty_editor_window and self.bounty_editor_window.winfo_exists():
+            self.bounty_editor_window.destroy()
+        self.bounty_editor_window = None
+        self.bounty_editor_text = None
+
+    def _apply_bounty_list_update(self):
+        if not self.bounty_editor_text:
+            return
+
+        raw_text = self.bounty_editor_text.get("1.0", tk.END)
+        try:
+            parsed_targets = parse_bounty_list(raw_text)
+        except ValueError as exc:
+            messagebox.showerror("Blood Token Bounty", str(exc))
+            return
+
+        set_bounty_targets(parsed_targets)
+
+        if self.log:
+            self.log.success(f"Blood Token bounty list updated with {len(parsed_targets)} target(s).")
+
+        messagebox.showinfo(
+            title="Blood Token Bounty",
+            message="Blood Token bounty list updated successfully.",
+        )
+        self._close_bounty_editor()
+
     def _locate_emoji_candidate(self, filename: str) -> Optional[Path]:
         candidate = Path(filename)
         if candidate.is_file():
@@ -166,16 +294,17 @@ class GUI():
         final_image.tk.call(final_image, 'copy', scaled, '-from', 0, 0, width, height, '-to', offset_x, offset_y)
         return final_image
 
-    def _load_single_emoji(self, filename: str, fallback_factory, box_size: int) -> tk.PhotoImage:
+    def _load_single_emoji(self, filename: Optional[str], fallback_factory, box_size: int) -> tk.PhotoImage:
         candidate_paths = []
 
-        static_candidate = Path(Helpers.resource_path(os.path.join("static", "images", filename)))
-        if static_candidate.is_file():
-            candidate_paths.append(static_candidate)
+        if filename:
+            static_candidate = Path(Helpers.resource_path(os.path.join("static", "images", filename)))
+            if static_candidate.is_file():
+                candidate_paths.append(static_candidate)
 
-        located = self._locate_emoji_candidate(filename)
-        if located and located not in candidate_paths:
-            candidate_paths.append(located)
+            located = self._locate_emoji_candidate(filename)
+            if located and located not in candidate_paths:
+                candidate_paths.append(located)
 
         for candidate in candidate_paths:
             try:
@@ -184,14 +313,15 @@ class GUI():
             except tk.TclError:
                 continue
 
-        self._pending_icon_warnings.append(f"Main Log, missing emoji, {filename}")
+        if filename:
+            self._pending_icon_warnings.append(f"Main Log, missing emoji, {filename}")
         return fallback_factory()
 
     def _load_emoji_assets(self) -> None:
         self._pending_icon_warnings.clear()
-        self.continental_history_badge_image = self._load_single_emoji(
-            "continental_logo.png",
-            self._create_continental_badge_image,
+        self.blood_token_badge_image = self._load_single_emoji(
+            None,
+            self._create_blood_token_badge_image,
             24,
         )
         self.star_citizen_logo_image = self._load_single_emoji(
@@ -212,17 +342,20 @@ class GUI():
             self.log.warning(warning)
         self._pending_icon_warnings.clear()
 
-    def _create_continental_badge_image(self):
-        """Create a small Continental crest badge using Tk's native drawing."""
+    def _create_blood_token_badge_image(self):
+        """Create a small crimson Blood Token badge using Tk's native drawing."""
         size = 24
         badge = tk.PhotoImage(width=size, height=size)
         center = (size - 1) / 2
         outer_radius = (size - 2) / 2
-        inner_radius = outer_radius * 0.68
-        cross_radius = inner_radius * 0.45
-        gold = "#d4a017"
-        highlight = "#f6dd74"
-        inner = "#1b1b1b"
+        inner_radius = outer_radius * 0.7
+        core_radius = inner_radius * 0.55
+
+        outer_color = "#7f1d1d"
+        rim_highlight = "#dc2626"
+        inner_glow = "#f87171"
+        core = "#1f0a0a"
+        sheen = "#fda4af"
 
         for y in range(size):
             for x in range(size):
@@ -233,31 +366,17 @@ class GUI():
                     continue
 
                 dist = dist_sq ** 0.5
-                color = gold
-                if dist < inner_radius:
-                    color = inner
+                color = outer_color
 
-                    # horizontal ring accent
-                    if abs(dy) <= 1.0:
-                        color = gold
-
-                    # vertical spine
-                    if abs(dx) <= 1.0:
-                        color = gold
-
-                    # descending diagonal arms
-                    if dy >= 0 and abs(dx * 0.85 - (dy - inner_radius * 0.2)) <= 1.2 and dist >= cross_radius:
-                        color = gold
-                    if dy >= 0 and abs(dx * 0.85 + (dy - inner_radius * 0.2)) <= 1.2 and dist >= cross_radius:
-                        color = gold
-
-                    # upper cross beam
-                    if abs(dy + inner_radius * 0.55) <= 1.0 and dist >= cross_radius:
-                        color = gold
-
-                # top arc highlight for a subtle sheen
-                if dist >= inner_radius and dy < 0:
-                    color = highlight
+                if dist >= inner_radius * 0.95:
+                    if dy < 0:
+                        color = rim_highlight
+                elif dist >= core_radius:
+                    color = inner_glow
+                    if dy < 0:
+                        color = sheen
+                else:
+                    color = core
 
                 badge.put(color, (x, y))
 
@@ -843,7 +962,7 @@ class GUI():
 
             if game_mode_for_server == "SC_Default":
                 cleaned_victim_input = victim_h.strip().lower()
-                for target_name, requirement in BOUNTY_TARGETS.items():
+                for target_name, requirement in get_bounty_targets().items():
                     if cleaned_victim_input == target_name.lower():
                         if self.log:
                             self.log.success(
@@ -855,7 +974,8 @@ class GUI():
                             event_type="kill",
                             target=target_name,
                             requirement=requirement,
-                            actor=killer_h
+                            actor=killer_h,
+                            source="system_test",
                         )
                         break
 
@@ -887,7 +1007,7 @@ class GUI():
         history_frame = tk.LabelFrame(
             main_frame,
             bg=self.colors['bg_dark'],
-            fg=self.colors['gold'],
+            fg=self.colors['blood_token_primary'],
             font=("Segoe UI", 9, "bold"),
             relief=tk.GROOVE,
             labelanchor='nw',
@@ -898,15 +1018,41 @@ class GUI():
 
         history_label = tk.Label(
             history_frame,
-            text="Continental Bounty",
+            text="Blood Token Bounty",
             font=("Segoe UI", 9, "bold"),
             bg=self.colors['bg_dark'],
-            fg=self.colors['gold'],
-            image=self.continental_history_badge_image,
+            fg=self.colors['blood_token_primary'],
+            image=self.blood_token_badge_image,
             compound=tk.LEFT,
             padx=4
         )
         history_frame.configure(labelwidget=history_label)
+        history_controls = tk.Frame(history_frame, bg=self.colors['bg_dark'])
+        history_controls.pack(fill=tk.X, pady=(0, 6))
+
+        self.update_bounty_button = tk.Button(
+            history_controls,
+            text="Update Bounty List",
+            command=self.open_bounty_editor,
+            bg=self.colors['blood_token_button'],
+            fg="#FFFFFF",
+            relief=tk.FLAT,
+            font=("Segoe UI", 9, "bold"),
+            activebackground=self.colors['blood_token_primary'],
+            activeforeground="#FFFFFF",
+            padx=8,
+            pady=2,
+        )
+        self.update_bounty_button.pack(side=tk.LEFT)
+
+        tk.Label(
+            history_controls,
+            text="⚠️ Make sure you update your list!",
+            font=("Segoe UI", 8),
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text_dark'],
+            padx=8,
+        ).pack(side=tk.LEFT)
         self.kill_history_widget = scrolledtext.ScrolledText(
             history_frame,
             wrap=tk.WORD,
@@ -924,7 +1070,7 @@ class GUI():
         self.kill_history_widget.tag_configure("separator", foreground=self.colors['text_dark'])
         self.kill_history_widget.tag_configure("kill_text", foreground=self.colors['submit_button'])
         self.kill_history_widget.tag_configure("bold_name", font=kill_history_bold)
-        self.kill_history_widget.tag_configure("victim_name", foreground=self.colors['gold'], font=kill_history_bold)
+        self.kill_history_widget.tag_configure("victim_name", foreground=self.colors['blood_token_primary'], font=kill_history_bold)
         self.kill_history_widget.tag_configure("requirement_alert", foreground=self.colors['error'])
 
         star_citizen_frame = tk.LabelFrame(

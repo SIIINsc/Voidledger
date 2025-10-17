@@ -7,6 +7,7 @@ from tzlocal import get_localzone
 from packaging import version
 from time import sleep
 import itertools
+from typing import Optional
 
 class API_Client():
     """API client for the Kill Tracker."""
@@ -355,3 +356,67 @@ class API_Client():
             self.cfg_handler.cfg_dict["pickle"].append(pickle_payload)
             self.log.warning(f'Connection seems to be unhealthy. Pickling kill.')
         return False
+
+    def post_blood_token_bounty(
+        self,
+        target: str,
+        requirement: Optional[str] = None,
+        actor: Optional[str] = None,
+    ) -> None:
+        """Send Blood Token bounty payloads to Servitor."""
+
+        if not target:
+            if self.log:
+                self.log.error("Blood Token bounty payload skipped: missing target handle.")
+            return
+
+        if not self.api_key["value"]:
+            if self.log:
+                self.log.error(
+                    "Blood Token bounty payload not sent because the key does not exist. Please enter a valid Kill Tracker key."
+                )
+            return
+
+        payload = {
+            "target": target,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+        }
+        if actor:
+            payload["actor"] = actor
+        if requirement:
+            payload["requirement"] = requirement
+
+        endpoint = "blood-token/bounty"
+        url = f"{self.api_fqdn}/{endpoint}"
+        headers = {
+            "content-type": "application/json",
+            "Authorization": self.api_key["value"] if self.api_key["value"] else "",
+        }
+
+        try:
+            if self.log:
+                self.log.debug(f"post_blood_token_bounty(): Sending payload {payload}")
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=self.request_timeout,
+            )
+            if response.status_code == 200:
+                self.connection_healthy = True
+                if self.log:
+                    self.log.success(f"Blood Token bounty for {target} reported to Servitor.")
+            else:
+                self.connection_healthy = False
+                if self.log:
+                    self.log.error(
+                        f"Error when posting Blood Token bounty: code {response.status_code}"
+                    )
+        except requests.exceptions.RequestException as exc:
+            self.connection_healthy = False
+            if self.log:
+                self.log.error(f"HTTP Error sending Blood Token bounty: {exc}")
+        except Exception as exc:
+            self.connection_healthy = False
+            if self.log:
+                self.log.error(f"post_blood_token_bounty(): {exc.__class__.__name__} {exc}")

@@ -54,7 +54,7 @@ class Sounds():
                 self.log.warning(not_found_message)
 
     def play_bounty_sound(self):
-        """Play the ka-ching sound for a Continental bounty kill."""
+        """Play the ka-ching sound for a Blood Token bounty kill."""
         self._play_sound_file(
             "ka-ching.mp3",
             "Bounty sound file 'ka-ching.mp3' not found in bundled sounds.",
