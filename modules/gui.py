@@ -685,7 +685,12 @@ class GUI():
             normalized_self = ""
             if self.api and getattr(self.api, "rsi_handle", None):
                 normalized_self = (self.api.rsi_handle.get("current") or "").strip().lower()
-            is_self_victim = bool(normalized_self and victim_h.strip().lower() == normalized_self)
+
+            killer_h_normalized = killer_h.strip().lower()
+            victim_h_normalized = victim_h.strip().lower()
+            is_self_killer = bool(normalized_self and killer_h_normalized == normalized_self)
+            is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
+            is_self_involved = is_self_killer or is_self_victim
 
             if post_online:
                 Thread(target=self.api.post_kill_event, args=(payload, "reportKill"), daemon=True).start()
@@ -693,28 +698,34 @@ class GUI():
                 if self.log:
                     self.log.info("Test mode selected: Kill event prepared locally without contacting Servitor.")
 
-            timestamp_display = datetime.now().strftime("%H:%M:%S")
-            if is_self_victim:
+            if is_self_involved:
+                timestamp_display = datetime.now().strftime("%H:%M:%S")
                 weapon_display = killer_w_game_name or "Unknown weapon"
-                death_message = f"{killer_h} killed you using {weapon_display}"
-                self.log_mode_kill(
-                    game_mode_for_server,
-                    timestamp_display,
-                    death_message,
-                    "death",
-                )
-                if self.sounds:
-                    self.sounds.play_death_sound()
+
+                if is_self_victim:
+                    death_message = f"{killer_h} killed you using {weapon_display}"
+                    self.log_mode_kill(
+                        game_mode_for_server,
+                        timestamp_display,
+                        death_message,
+                        "death",
+                    )
+                    if self.sounds:
+                        self.sounds.play_death_sound()
+                else:
+                    self.log_mode_kill(
+                        game_mode_for_server,
+                        timestamp_display,
+                        f"You killed {victim_h} with {weapon_display}",
+                        "kill",
+                    )
+                    if self.sounds:
+                        self.sounds.play_kill_sound()
             else:
-                weapon_display = killer_w_game_name or "Unknown weapon"
-                self.log_mode_kill(
-                    game_mode_for_server,
-                    timestamp_display,
-                    f"You killed {victim_h} with {weapon_display}",
-                    "kill",
-                )
-                if self.sounds:
-                    self.sounds.play_kill_sound()
+                if self.log:
+                    self.log.info(
+                        "Kill log entry skipped: your handle was not involved in this injected event."
+                    )
 
             if game_mode_for_server == "SC_Default":
                 cleaned_victim_input = victim_h.strip().lower()
@@ -820,8 +831,6 @@ class GUI():
             font=("Segoe UI", 9, "bold"),
             bg=self.colors['bg_dark'],
             fg="#FFFFFF",
-            image=self.star_citizen_logo_image,
-            compound=tk.LEFT,
             padx=4
         )
         star_citizen_frame.configure(labelwidget=star_citizen_label)
@@ -851,8 +860,6 @@ class GUI():
             font=("Segoe UI", 9, "bold"),
             bg=self.colors['bg_dark'],
             fg="#A855F7",
-            image=self.blightveil_badge_image,
-            compound=tk.LEFT,
             padx=4
         )
         features_frame.configure(labelwidget=features_label)
