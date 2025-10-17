@@ -806,6 +806,12 @@ class GUI():
             is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
             is_self_involved = is_self_killer or is_self_victim
 
+            killer_h_normalized = killer_h.strip().lower()
+            victim_h_normalized = victim_h.strip().lower()
+            is_self_killer = bool(normalized_self and killer_h_normalized == normalized_self)
+            is_self_victim = bool(normalized_self and victim_h_normalized == normalized_self)
+            is_self_involved = is_self_killer or is_self_victim
+
             if is_self_involved:
                 timestamp_display = datetime.now().strftime("%H:%M:%S")
                 weapon_display = killer_w_game_name or "Unknown weapon"
